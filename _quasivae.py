@@ -183,6 +183,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             scale_activation="softplus" if use_size_factor_key else "softmax",
             **_extra_decoder_kwargs,
         )
+        self.b_decoder = nn.Linear(dim_b, n_input)
 
 
 
@@ -317,9 +318,13 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
                 
         # else:
         #     b = torch.zeros_like(library) if qb is None else qb.sample()  # Fallback to zeros if qb is None
+        
+
+        b = self.b_decoder(z_b)
+        
         return {
             "qz_b": qz_b,   # Add qb to output
-            "z_b": z_b,  # Add b to output
+            "b": b,  # Add b to output
             MODULE_KEYS.Z_KEY: z,
             MODULE_KEYS.QZ_KEY: qz,
             MODULE_KEYS.QL_KEY: ql,
@@ -356,14 +361,14 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             library = library.unsqueeze(0).expand((n_samples, library.size(0), library.size(1)))
             # b = b.unsqueeze(0).expand((n_samples, b.size(0), b.size(1)))  # Expand b
 
-
+        b = self.b_decoder(z_b)
         return {
             MODULE_KEYS.Z_KEY: z,
             MODULE_KEYS.QZM_KEY: qzm,
             MODULE_KEYS.QZV_KEY: qzv,
             MODULE_KEYS.QL_KEY: None,
             MODULE_KEYS.LIBRARY_KEY: library,
-            MODULE_KEYS.B_KEY: z_b,  # Add b to the output
+            MODULE_KEYS.B_KEY: b,  # Add b to the output
 
         }
 
