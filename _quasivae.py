@@ -18,6 +18,7 @@ from scvi.module.base import (
     EmbeddingModuleMixin,
     LossOutput,
     auto_move_data,
+    BaseModelClass,
 )
 
 def quasi_likelihood_loss(px_rate, target, px_r, b):
@@ -28,7 +29,7 @@ def quasi_likelihood_loss(px_rate, target, px_r, b):
 
 
 
-class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
+class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin, BaseModelClass):
     def __init__(
         self,
         n_input: int,
