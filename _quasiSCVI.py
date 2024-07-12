@@ -6,6 +6,7 @@ from typing import Literal
 
 import numpy as np
 from anndata import AnnData
+import torch
 
 from scvi import REGISTRY_KEYS, settings
 from scvi._types import MinifiedDataType
@@ -44,9 +45,10 @@ class QuasiSCVI( EmbeddingMixin,
     ArchesMixin,
     UnsupervisedTrainingMixin,
     BaseMinifiedModeModelClass,
-    BaseModelClass,):
+    BaseModelClass):
     """Quasi single-cell Variational Inference with QuasiVAE as the module."""
 
+    _module_cls = QuasiVAE
 
     def __init__(
         self,
@@ -99,8 +101,14 @@ class QuasiSCVI( EmbeddingMixin,
                 library_log_means, library_log_vars = _init_library_size(
                     self.adata_manager, n_batch
                 )
+            if adata is not None:
+                self.guide_embedding_dim = adata.obsm["X_guide_embeddings"].shape[1]
+            else:
+                raise ValueError("Anndata object must be provided to extract guide_embedding_dim")
+
             self.module = self._module_cls(
                 n_input=self.summary_stats.n_vars,
+                guide_embedding_dim= self.guide_embedding_dim,
                 n_batch=n_batch,
                 n_labels=self.summary_stats.n_labels,
                 n_continuous_cov=self.summary_stats.get("n_extra_continuous_covs", 0),
@@ -129,6 +137,7 @@ class QuasiSCVI( EmbeddingMixin,
         layer: str | None = None,
         batch_key: str | None = None,
         labels_key: str | None = None,
+        guide_embedding_key: str | None = None,
         size_factor_key: str | None = None,
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
@@ -155,6 +164,14 @@ class QuasiSCVI( EmbeddingMixin,
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
             NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
         ]
+            
+        if guide_embedding_key is not None:
+            # Register the field correctly in obsm
+            anndata_fields.append(
+                ObsmField("X_guide_embeddings", guide_embedding_key)
+            )
+
+
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)
         if adata_minify_type is not None:
@@ -239,7 +256,94 @@ class QuasiSCVI( EmbeddingMixin,
         minified_adata.obs[_SCVI_OBSERVED_LIB_SIZE] = np.squeeze(np.asarray(counts.sum(axis=1)))
         self._update_adata_and_manager_post_minification(minified_adata, minified_data_type)
         self.module.minified_data_type = minified_data_type
+    
 
 
-    _module_cls = QuasiVAE
+    @torch.inference_mode()
+    def get_b_latent_representation(
+        self,
+        adata: Optional[AnnData] = None,
+        indices: Optional[Sequence[int]] = None,
+        give_mean: bool = True,
+        mc_samples: int = 5000,
+        batch_size: Optional[int] = None,
+        return_dist: bool = False,
+    ) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
+        """Return the latent representation for b for each cell.
 
+        This is typically denoted as :math:`b_n`.
+
+        Parameters
+        ----------
+        adata
+            AnnData object with equivalent structure to initial AnnData. If `None`, defaults to the
+            AnnData object used to initialize the model.
+        indices
+            Indices of cells in adata to use. If `None`, all cells are used.
+        give_mean
+            Give mean of distribution or sample from it.
+        mc_samples
+            For distributions with no closed-form mean (e.g., `logistic normal`), how many Monte
+            Carlo samples to take for computing mean.
+        batch_size
+            Minibatch size for data loading into model. Defaults to `scvi.settings.batch_size`.
+        return_dist
+            Return (mean, variance) of distributions instead of just the mean.
+            If `True`, ignores `give_mean` and `mc_samples`. In the case of the latter,
+            `mc_samples` is used to compute the mean of a transformed distribution.
+            If `return_dist` is true the untransformed mean and variance are returned.
+
+        Returns
+        -------
+        Low-dimensional representation for each cell or a tuple containing its mean and variance.
+        """
+        self._check_if_trained(warn=False)
+
+        adata = self._validate_anndata(adata)
+        scdl = self._make_data_loader(adata=adata, indices=indices, batch_size=batch_size)
+        latent_b = []
+        latent_qbm = []
+        latent_qbv = []
+        
+        for tensors in scdl:
+            inference_inputs = self.module._get_inference_input(tensors)
+            outputs = self.module.inference(**inference_inputs)
+
+            # Process qb and b
+            if "qb" in outputs:
+                qb = outputs["qb"]
+            
+            if give_mean:
+                b = qb.loc
+            else:
+                b = outputs["b"]
+
+            latent_b += [b.cpu()]
+            latent_qbm += [qb.loc.cpu()]
+            latent_qbv += [qb.scale.square().cpu()]
+
+        return (
+            (torch.cat(latent_qbm).numpy(), torch.cat(latent_qbv).numpy())
+            if return_dist
+            else torch.cat(latent_b).numpy()
+        )
+    
+    
+from scvi.dataloaders import AnnDataLoader    
+class CustomAnnDataLoader(AnnDataLoader):
+    def __init__(
+        self,
+        adata_manager,
+        shuffle=False,
+        indices=None,
+        batch_size=128,
+        **kwargs,
+    ):
+        super().__init__(adata_manager, shuffle, indices, batch_size, **kwargs)
+    
+    def collate_fn(self, batch):
+        tensors = super().collate_fn(batch)
+        guide_embeddings = self.adata_manager.adata.obsm["X_guide_embeddings"]
+        # Ensure the guide embeddings are aligned with the batch indices
+        tensors["X_guide_embeddings"] = torch.tensor(guide_embeddings[self.indices], dtype=torch.float32)
+        return tensors
