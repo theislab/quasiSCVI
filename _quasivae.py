@@ -12,7 +12,9 @@ import torch.nn.functional as F
 
 
 from scvi import REGISTRY_KEYS
-from scvi.module._constants import MODULE_KEYS
+# from scvi.module._constants import MODULE_KEYS
+from _constants import MODULE_KEYS
+
 from scvi.nn import DecoderSCVI, Encoder
 
 llogger = logging.getLogger(__name__)
@@ -268,7 +270,8 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             MODULE_KEYS.CONT_COVS_KEY: tensors.get(REGISTRY_KEYS.CONT_COVS_KEY, None),
             MODULE_KEYS.CAT_COVS_KEY: tensors.get(REGISTRY_KEYS.CAT_COVS_KEY, None),
             MODULE_KEYS.SIZE_FACTOR_KEY: size_factor,
-            "b": inference_outputs["z_gbc"],
+            MODULE_KEYS.B_PRIOR: inference_inputs["z_gbc"]
+        
         }
 
     def _compute_local_library_params(
@@ -301,9 +304,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         batch_index: torch.Tensor,
         cont_covs: torch.Tensor | None = None,
         cat_covs: torch.Tensor | None = None,
-        z_gbc: torch.Tensor | None = None,
-        # X_guide_embeddings: torch.Tensor | None = None,
-        n_samples: int = 1,
+            n_samples: int = 1,
     ) -> dict[str, torch.Tensor | Distribution | None]:
         """Run the regular inference process."""
         
@@ -369,7 +370,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             MODULE_KEYS.QZ_KEY: qz,
             MODULE_KEYS.QL_KEY: ql,
             MODULE_KEYS.LIBRARY_KEY: library,
-            "b": z_gbc,  # latent variable
+        
         }
 
     @auto_move_data
