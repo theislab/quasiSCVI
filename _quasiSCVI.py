@@ -137,7 +137,6 @@ class QuasiSCVI( EmbeddingMixin,
         layer: str | None = None,
         batch_key: str | None = None,
         labels_key: str | None = None,
-        guide_embedding_key: str | None = None,
         size_factor_key: str | None = None,
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
@@ -164,14 +163,6 @@ class QuasiSCVI( EmbeddingMixin,
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
             NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
         ]
-            
-        if guide_embedding_key is not None:
-            # Register the field correctly in obsm
-            anndata_fields.append(
-                ObsmField("X_guide_embeddings", guide_embedding_key)
-            )
-
-
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)
         if adata_minify_type is not None:
@@ -327,23 +318,3 @@ class QuasiSCVI( EmbeddingMixin,
             if return_dist
             else torch.cat(latent_b).numpy()
         )
-    
-    
-from scvi.dataloaders import AnnDataLoader    
-class CustomAnnDataLoader(AnnDataLoader):
-    def __init__(
-        self,
-        adata_manager,
-        shuffle=False,
-        indices=None,
-        batch_size=128,
-        **kwargs,
-    ):
-        super().__init__(adata_manager, shuffle, indices, batch_size, **kwargs)
-    
-    def collate_fn(self, batch):
-        tensors = super().collate_fn(batch)
-        guide_embeddings = self.adata_manager.adata.obsm["X_guide_embeddings"]
-        # Ensure the guide embeddings are aligned with the batch indices
-        tensors["X_guide_embeddings"] = torch.tensor(guide_embeddings[self.indices], dtype=torch.float32)
-        return tensors
