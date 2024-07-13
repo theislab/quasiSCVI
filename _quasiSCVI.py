@@ -60,6 +60,7 @@ class QuasiSCVI( EmbeddingMixin,
         dispersion: Literal["gene", "gene-batch", "gene-label", "gene-cell"] = "gene",
         gene_likelihood: Literal["zinb", "nb", "poisson", "normal"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
+        gbc_embbeding_indices: np.ndarray=None,
         **kwargs,
     ):
         super().__init__(adata)
@@ -123,6 +124,7 @@ class QuasiSCVI( EmbeddingMixin,
                 use_size_factor_key=use_size_factor_key,
                 library_log_means=library_log_means,
                 library_log_vars=library_log_vars,
+                gbc_embbeding_indices=gbc_embbeding_indices,
                 **kwargs,
             )
             self.module.minified_data_type = self.minified_data_type
