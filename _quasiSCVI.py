@@ -12,6 +12,7 @@ from scvi import REGISTRY_KEYS, settings
 from scvi._types import MinifiedDataType
 from scvi.data import AnnDataManager
 from scvi.data._constants import _ADATA_MINIFY_TYPE_UNS_KEY, ADATA_MINIFY_TYPE
+from _constants import EXTRA_KEYS
 from scvi.data._utils import _get_adata_minify_type
 from scvi.data.fields import (
     BaseAnnDataField,
@@ -36,6 +37,7 @@ from scvi.model.base import ArchesMixin, BaseMinifiedModeModelClass, RNASeqMixin
 _SCVI_LATENT_QZM = "_scvi_latent_qzm"
 _SCVI_LATENT_QZV = "_scvi_latent_qzv"
 _SCVI_OBSERVED_LIB_SIZE = "_scvi_observed_lib_size"
+_LATENT_QB_KEY = "gbc_embedding_key"
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ class QuasiSCVI( EmbeddingMixin,
         dispersion: Literal["gene", "gene-batch", "gene-label", "gene-cell"] = "gene",
         gene_likelihood: Literal["zinb", "nb", "poisson", "normal"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
-        gbc_embbeding_indices: np.ndarray=None,
+        # gbc_embbeding_indices: np.ndarray=None,
         **kwargs,
     ):
         super().__init__(adata)
@@ -120,7 +122,7 @@ class QuasiSCVI( EmbeddingMixin,
                 use_size_factor_key=use_size_factor_key,
                 library_log_means=library_log_means,
                 library_log_vars=library_log_vars,
-                gbc_embbeding_indices=gbc_embbeding_indices,
+                # gbc_embbeding_indices=gbc_embbeding_indices,
                 **kwargs,
             )
             self.module.minified_data_type = self.minified_data_type
@@ -138,6 +140,7 @@ class QuasiSCVI( EmbeddingMixin,
         size_factor_key: str | None = None,
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
+        gbc_embedding_key: str | None = None,
         **kwargs,
     ):
         """%(summary)s.
@@ -160,6 +163,7 @@ class QuasiSCVI( EmbeddingMixin,
             NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
             NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
+            ObsmField(EXTRA_KEYS.LATENT_QB_KEY, _LATENT_QB_KEY),
         ]
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)

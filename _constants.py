@@ -17,6 +17,7 @@ class _MODULE_KEYS(NamedTuple):
     CONT_COVS_KEY: str = "cont_covs"
     CAT_COVS_KEY: str = "cat_covs"
     SIZE_FACTOR_KEY: str = "size_factor"
+    GBC_EMBED_KEY: str = "gbc_embedding"
     # generative
     PX_KEY: str = "px"
     PL_KEY: str = "pl"
@@ -27,3 +28,9 @@ class _MODULE_KEYS(NamedTuple):
 
 
 MODULE_KEYS = _MODULE_KEYS()
+
+class EXTRA_KEYS(NamedTuple):
+    LATENT_QB_KEY: 'str' =  'gbc_embedding_key'
+
+
+EXTRA_KEYS = EXTRA_KEYS()
