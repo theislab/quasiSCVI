@@ -376,7 +376,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             untran_z = qz.sample((n_samples,))
             z = self.z_encoder.z_transformation(untran_z)
             
-            if self.gbc_embbeding_indices is None:
+            if self.gbc_latent_dim is None:
                 untran_b = qb.sample((n_samples,))
                 b = self.b_encoder.z_transformation(untran_b)
             
@@ -563,9 +563,9 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
 
         x = tensors[REGISTRY_KEYS.X_KEY]
         
-        if self.gbc_embbeding_indices is not None:
-            idx = torch.arrange(self.n_input)
-            x = x[:, idx != self.gbc_embbeding_indices]
+        # if self.gbc_embbeding_indices is not None:
+        #     idx = torch.arrange(self.n_input)
+        #     x = x[:, idx != self.gbc_embbeding_indices]
         
         n_obs_minibatch = x.shape[0] 
         kl_divergence_z = kl_divergence(inference_outputs[MODULE_KEYS.QZ_KEY], generative_outputs[MODULE_KEYS.PZ_KEY]).sum(dim=-1)
@@ -584,7 +584,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         reconst_loss = quasi_likelihood_loss(px_rate, x, px_r, px_b).sum(-1)
 
         
-        if self.gbc_embbeding_indices is None:
+        if self.gbc_latent_dim is None:
             kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QB_KEY], generative_outputs["pb"]).sum(-1)
         else:
             kl_b = torch.tensor(0.0, device=x.device)
