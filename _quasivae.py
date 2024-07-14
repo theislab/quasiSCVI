@@ -38,7 +38,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
     def __init__(
         self,
         n_input: int,
-        guide_embedding_dim: int,
         n_batch: int = 0,
         n_labels: int = 0,
         n_hidden: int = 128,
@@ -74,7 +73,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         self.dispersion = dispersion
         self.n_latent = n_latent
         self.b_dim = b_dim
-        # self.guide_embedding_dim = guide_embedding_dim
         self.log_variational = log_variational
         self.gene_likelihood = gene_likelihood
         self.n_batch = n_batch
