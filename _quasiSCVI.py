@@ -62,7 +62,7 @@ class QuasiSCVI( EmbeddingMixin,
         dispersion: Literal["gene", "gene-batch", "gene-label", "gene-cell"] = "gene",
         gene_likelihood: Literal["zinb", "nb", "poisson", "normal"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
-        # gbc_embbeding_indices: np.ndarray=None,
+        gbc_latent_dim: int| None = None,
         **kwargs,
     ):
         super().__init__(adata)
@@ -82,7 +82,6 @@ class QuasiSCVI( EmbeddingMixin,
             f"dropout_rate: {dropout_rate}, dispersion: {dispersion}, "
             f"gene_likelihood: {gene_likelihood}, latent_distribution: {latent_distribution}."
         )
-        
         if self._module_init_on_train:
             self.module = None
             warnings.warn(
@@ -104,7 +103,6 @@ class QuasiSCVI( EmbeddingMixin,
                 library_log_means, library_log_vars = _init_library_size(
                     self.adata_manager, n_batch
                 )
-            
 
             self.module = self._module_cls(
                 n_input=self.summary_stats.n_vars,
@@ -122,7 +120,7 @@ class QuasiSCVI( EmbeddingMixin,
                 use_size_factor_key=use_size_factor_key,
                 library_log_means=library_log_means,
                 library_log_vars=library_log_vars,
-                # gbc_embbeding_indices=gbc_embbeding_indices,
+                gbc_latent_dim=gbc_latent_dim,
                 **kwargs,
             )
             self.module.minified_data_type = self.minified_data_type
@@ -156,15 +154,24 @@ class QuasiSCVI( EmbeddingMixin,
         %(param_cont_cov_keys)s
         """
         setup_method_args = cls._get_setup_method_args(**locals())
-        anndata_fields = [
+        if gbc_embedding_key is None:
+            anndata_fields = [
             LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
             CategoricalObsField(REGISTRY_KEYS.LABELS_KEY, labels_key),
             NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
-            NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
-            ObsmField(EXTRA_KEYS.LATENT_QB_KEY, _LATENT_QB_KEY),
-        ]
+            NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),]
+        else:
+            anndata_fields = [
+                LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
+                CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
+                CategoricalObsField(REGISTRY_KEYS.LABELS_KEY, labels_key),
+                NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
+                CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
+                NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
+                ObsmField(EXTRA_KEYS.LATENT_QB_KEY, _LATENT_QB_KEY),
+            ]
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)
         if adata_minify_type is not None:

@@ -38,6 +38,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
     def __init__(
         self,
         n_input: int,
+        gbc_latent_dim: int,
         n_batch: int = 0,
         n_labels: int = 0,
         n_hidden: int = 128,
@@ -64,9 +65,8 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         extra_encoder_kwargs: dict | None = None,
         extra_decoder_kwargs: dict | None = None,
         batch_embedding_kwargs: dict | None = None,
-        b_prior_mixture: bool = False,
+        b_prior_mixture: bool = True,
         b_prior_mixture_k: int = 5,
-        # gbc_embbeding_indices: list[int] = None, 
     ):
 
         super().__init__()
@@ -81,9 +81,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         self.encode_covariates = encode_covariates
         self.use_size_factor_key = use_size_factor_key
         self.use_observed_lib_size = use_size_factor_key or use_observed_lib_size
-        # self.gbc_embbeding_indices = gbc_embbeding_indices
-        # self.gbc_latent_dim = len(self.gbc_embbeding_indices)
-
+        self.gbc_latent_dim = gbc_latent_dim
         if not self.use_observed_lib_size:
             if library_log_means is None or library_log_vars is None:
                 raise ValueError(
@@ -118,15 +116,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         use_batch_norm_decoder = use_batch_norm == "decoder" or use_batch_norm == "both"
         use_layer_norm_encoder = use_layer_norm == "encoder" or use_layer_norm == "both"
         use_layer_norm_decoder = use_layer_norm == "decoder" or use_layer_norm == "both"
-
-        
-        # if self.gbc_embedding_indices is not None:
-        #     n_input = n_input - self.gbc_latent_dim
-        #     self.n_input = n_input
-        # else:
-        #     self.n_input = n_input
-
-        
         
         n_input_encoder = n_input + n_continuous_cov * encode_covariates
         if self.batch_representation == "embedding":
@@ -201,8 +190,8 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             **_extra_decoder_kwargs,
         )
 
-        gbc_latent_key = EXTRA_KEYS.LATENT_QB_KEY
-        self.gbc_latent_dim = tensors[gbc_latent_key].size(1) if gbc_latent_key in tensors.keys() else None
+        #gbc_latent_key = EXTRA_KEYS.LATENT_QB_KEY
+        #self.gbc_latent_dim = tensors[gbc_latent_key].size(1) if gbc_latent_key in tensors.keys() else None
         
         if self.gbc_latent_dim is None:
             qbx = torch.nn.Linear(b_dim, 1)
@@ -215,9 +204,9 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         # ) 
 
         self.b_decoder = torch.nn.Sequential(
-            qbx,  # Linear transformation
-            #torch.nn.Softmax(dim=-1)              # Softmax activation
-        ) 
+        qbx,  # Linear transformation
+        )  #torch.nn.Softmax(dim=-1)              # Softmax activation
+        
         
         
 
@@ -279,7 +268,9 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             MODULE_KEYS.CONT_COVS_KEY: tensors.get(REGISTRY_KEYS.CONT_COVS_KEY, None),
             MODULE_KEYS.CAT_COVS_KEY: tensors.get(REGISTRY_KEYS.CAT_COVS_KEY, None),
             MODULE_KEYS.SIZE_FACTOR_KEY: size_factor,
-            MODULE_KEYS.B_KEY: tensors.get(EXTRA_KEYS.LATENT_QB_KEY, None),
+            #MODULE_KEYS.B_KEY: tensors.get(EXTRA_KEYS.LATENT_QB_KEY, None),
+            MODULE_KEYS.B_KEY:  inference_outputs[MODULE_KEYS.B_KEY],
+
             
         
         }
@@ -315,19 +306,11 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         cont_covs: torch.Tensor | None = None,
         cat_covs: torch.Tensor | None = None,
         gbc_embedding: torch.Tensor | None = None,        
-            n_samples: int = 1,
+        n_samples: int = 1,
     ) -> dict[str, torch.Tensor | Distribution | None]:
         """Run the regular inference process."""
         
-        
-        
-        # if self.gbc_embbeding_indices is None:
-        #     z_gbc = None
-        # else:
-        #     z_gbc = x[:,self.gbc_embbeding_indices]
-        #     idx = torch.arrange(self.n_input)
-        #     x = x[:, idx != self.gbc_embbeding_indices]
-        
+    
         x_ = x
         if self.use_observed_lib_size:
             library = torch.log(x.sum(1)).unsqueeze(1)
@@ -350,11 +333,17 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             qz, z = self.z_encoder(encoder_input, *categorical_input)
         else:
             qz, z = self.z_encoder(encoder_input, batch_index, *categorical_input)
+            
+        qb = None
+        if cont_covs is not None:
+            b_encoder_input = torch.cat((z, cont_covs), dim=-1)
+        else:
+            b_encoder_input = z
 
        
-        qb = None
         if self.gbc_latent_dim is None:
-            qb, b = self.b_encoder(z) # or self.b_encoder(b_encoder_input, batch_index) ?
+           qb ,b = self.b_encoder(b_encoder_input, batch_index, *categorical_input) 
+
         else:
             b = gbc_embedding
 
@@ -397,7 +386,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             MODULE_KEYS.LIBRARY_KEY: library,
             MODULE_KEYS.QB_KEY: qb,
             MODULE_KEYS.B_KEY: b,
-        
         }
 
     @auto_move_data
@@ -563,10 +551,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
 
         x = tensors[REGISTRY_KEYS.X_KEY]
         
-        # if self.gbc_embbeding_indices is not None:
-        #     idx = torch.arrange(self.n_input)
-        #     x = x[:, idx != self.gbc_embbeding_indices]
-        
         n_obs_minibatch = x.shape[0] 
         kl_divergence_z = kl_divergence(inference_outputs[MODULE_KEYS.QZ_KEY], generative_outputs[MODULE_KEYS.PZ_KEY]).sum(dim=-1)
         if not self.use_observed_lib_size:
@@ -585,7 +569,13 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
 
         
         if self.gbc_latent_dim is None:
-            kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QB_KEY], generative_outputs["pb"]).sum(-1)
+            if self.b_prior_mixture:
+                kl_b = inference_outputs[MODULE_KEYS.QB_KEY].log_prob(
+                  inference_outputs[MODULE_KEYS.B_KEY]
+                ) - generative_outputs["pb"].log_prob(inference_outputs[MODULE_KEYS.B_KEY])
+                kl_b = kl_b.sum(-1)
+            else:
+                kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QB_KEY], generative_outputs["pb"]).sum(-1)
         else:
             kl_b = torch.tensor(0.0, device=x.device)
     
@@ -602,4 +592,4 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             "kl_divergence_b": kl_b,  # kl divergence of b
 
         }
-        return LossOutput(loss=loss, reconstruction_loss=reconst_loss, kl_local=kl_local, n_obs_minibatch=n_obs_minibatch, kl_divergence_b=kl_b.mean()) 
+        return LossOutput(loss=loss, reconstruction_loss=reconst_loss, kl_local=kl_local, n_obs_minibatch=n_obs_minibatch)#, kl_divergence_b=kl_b.mean()) 
