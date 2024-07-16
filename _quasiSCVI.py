@@ -37,7 +37,7 @@ from scvi.model.base import ArchesMixin, BaseMinifiedModeModelClass, RNASeqMixin
 _SCVI_LATENT_QZM = "_scvi_latent_qzm"
 _SCVI_LATENT_QZV = "_scvi_latent_qzv"
 _SCVI_OBSERVED_LIB_SIZE = "_scvi_observed_lib_size"
-_LATENT_QB_KEY = "gbc_embedding_key"
+_LATENT_QR_KEY = "gbc_embedding_key"
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ class QuasiSCVI( EmbeddingMixin,
                 NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
                 CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
                 NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
-                ObsmField(EXTRA_KEYS.LATENT_QB_KEY, _LATENT_QB_KEY),
+                ObsmField(EXTRA_KEYS.LATENT_QR_KEY, _LATENT_QR_KEY),
             ]
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)

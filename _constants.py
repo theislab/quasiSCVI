@@ -9,8 +9,8 @@ class _MODULE_KEYS(NamedTuple):
     QZM_KEY: str = "qzm"
     QZV_KEY: str = "qzv"
     LIBRARY_KEY: str = "library"
-    B_KEY: str = "b"
-    QB_KEY: str = "qb"
+    PX_R_KEY: str = "px_r"
+    QR_KEY: str = "qr"
     QL_KEY: str = "ql"
     BATCH_INDEX_KEY: str = "batch_index"
     Y_KEY: str = "y"
@@ -30,7 +30,7 @@ class _MODULE_KEYS(NamedTuple):
 MODULE_KEYS = _MODULE_KEYS()
 
 class EXTRA_KEYS(NamedTuple):
-    LATENT_QB_KEY: 'str' =  'gbc_embedding_key'
+    LATENT_QR_KEY: 'str' =  'gbc_embedding_key'
 
 
 EXTRA_KEYS = EXTRA_KEYS()
