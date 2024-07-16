@@ -63,6 +63,8 @@ class QuasiSCVI( EmbeddingMixin,
         gene_likelihood: Literal["zinb", "nb", "poisson", "normal"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
         gbc_latent_dim: int| None = None,
+        b_prior_mixture: bool | None = None,
+        b_prior_mixture_k: int | None = None,
         **kwargs,
     ):
         super().__init__(adata)
@@ -121,6 +123,8 @@ class QuasiSCVI( EmbeddingMixin,
                 library_log_means=library_log_means,
                 library_log_vars=library_log_vars,
                 gbc_latent_dim=gbc_latent_dim,
+                b_prior_mixture=b_prior_mixture,
+                b_prior_mixture_k=b_prior_mixture_k,
                 **kwargs,
             )
             self.module.minified_data_type = self.minified_data_type

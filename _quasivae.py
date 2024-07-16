@@ -82,6 +82,8 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         self.use_size_factor_key = use_size_factor_key
         self.use_observed_lib_size = use_size_factor_key or use_observed_lib_size
         self.gbc_latent_dim = gbc_latent_dim
+        self.kl_b_log = []  # List to store kl_b values
+
         if not self.use_observed_lib_size:
             if library_log_means is None or library_log_vars is None:
                 raise ValueError(
@@ -205,7 +207,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
 
         self.b_decoder = torch.nn.Sequential(
         qbx,  # Linear transformation
-        )  #torch.nn.Softmax(dim=-1)              # Softmax activation
+        torch.nn.Softmax(dim=-1)   )           # Softmax activation
         
         
         
@@ -579,6 +581,9 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         else:
             kl_b = torch.tensor(0.0, device=x.device)
     
+    
+            self.kl_b_log.append(kl_b.mean().item())
+
 
         kl_local_for_warmup = kl_divergence_z + kl_b
         kl_local_no_warmup = kl_divergence_l
