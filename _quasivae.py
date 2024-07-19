@@ -38,12 +38,14 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
     def __init__(
         self,
         n_input: int,
-        gbc_latent_dim: int,
+        z_guide_m: torch.Tensor | None = None,
+        z_guide_v: torch.Tensor | None = None,
+        gbc_latent_dim: int | None = None,
         n_batch: int = 0,
         n_labels: int = 0,
         n_hidden: int = 128,
         n_latent: int = 15,
-        b_dim: int = 3,
+        b_dim: int = 10,
         n_layers: int = 1,
         n_continuous_cov: int = 0,
         n_cats_per_cov: list[int] | None = None,
@@ -65,7 +67,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         extra_encoder_kwargs: dict | None = None,
         extra_decoder_kwargs: dict | None = None,
         batch_embedding_kwargs: dict | None = None,
-        b_prior_mixture: bool = True,
+        b_prior_mixture: bool = False,
         b_prior_mixture_k: int = 5,
     ):
 
@@ -93,20 +95,9 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
 
             self.register_buffer("library_log_means", torch.from_numpy(library_log_means).float())
             self.register_buffer("library_log_vars", torch.from_numpy(library_log_vars).float())
-
-        #if self.dispersion == "gene":
-         #   self.px_r = torch.nn.Parameter(torch.randn(n_input))
-        #elif self.dispersion == "gene-batch":
-         #   self.px_r = torch.nn.Parameter(torch.randn(n_input, n_batch))
-        #elif self.dispersion == "gene-label":
-         #   self.px_r = torch.nn.Parameter(torch.randn(n_input, n_labels))
-        #elif self.dispersion == "gene-cell":
-         #   pass
-        #else:
-         #   raise ValueError(
-          #      "`dispersion` must be one of 'gene', 'gene-batch', 'gene-label', 'gene-cell'."
-           # )
-
+        
+        self.z_guide_m = z_guide_m
+        self.z_guide_v = z_guide_v
         self.px_b = torch.nn.Parameter(torch.full((n_input,), 2.0))
         self.batch_representation = batch_representation
         if self.batch_representation == "embedding":
@@ -133,7 +124,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         # TO DO: this has to go from qzm
         self.px_r_encoder = Encoder(
             n_latent,
-            b_dim,
+            gbc_latent_dim,
             n_layers=1,
             n_cat_list=encoder_cat_list,
             n_hidden=n_hidden,
@@ -157,7 +148,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             use_batch_norm=use_batch_norm_encoder,
             use_layer_norm=use_layer_norm_encoder,
             var_activation=var_activation,
-            return_dist=True,
+            return_dist=False,
             **_extra_encoder_kwargs,
         )
         # l encoder goes from n_input-dimensional data to 1-d library size
@@ -193,13 +184,11 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             **_extra_decoder_kwargs,
         )
 
-        #gbc_latent_key = EXTRA_KEYS.LATENT_QB_KEY
-        #self.gbc_latent_dim = tensors[gbc_latent_key].size(1) if gbc_latent_key in tensors.keys() else None
-        
+  
         if self.gbc_latent_dim is None:
             qrx = torch.nn.Linear(b_dim, 1)
         else:
-            qrx = torch.nn.Linear(self.gbc_latent_dim, 1)
+            qrx = torch.nn.Linear(gbc_latent_dim, 1)
         
         # self.b_decoder = torch.nn.Sequential(
         #     torch.nn.Linear(b_dim, 1),  # Linear transformation
@@ -239,7 +228,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
                 MODULE_KEYS.BATCH_INDEX_KEY: tensors[REGISTRY_KEYS.BATCH_KEY],
                 MODULE_KEYS.CONT_COVS_KEY: tensors.get(REGISTRY_KEYS.CONT_COVS_KEY, None),
                 MODULE_KEYS.CAT_COVS_KEY: tensors.get(REGISTRY_KEYS.CAT_COVS_KEY, None),
-                MODULE_KEYS.GBC_EMBED_KEY: tensors.get(EXTRA_KEYS.LATENT_QR_KEY, None)
                 
             }
         elif self.minified_data_type == ADATA_MINIFY_TYPE.LATENT_POSTERIOR:
@@ -308,12 +296,12 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         batch_index: torch.Tensor,
         cont_covs: torch.Tensor | None = None,
         cat_covs: torch.Tensor | None = None,
-        gbc_embedding: torch.Tensor | None = None,        
         n_samples: int = 1,
     ) -> dict[str, torch.Tensor | Distribution | None]:
         """Run the regular inference process."""
         
-    
+        from torch.distributions import Normal
+
         x_ = x
         if self.use_observed_lib_size:
             library = torch.log(x.sum(1)).unsqueeze(1)
@@ -333,24 +321,23 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         if self.batch_representation == "embedding" and self.encode_covariates:
             batch_rep = self.compute_embedding(REGISTRY_KEYS.BATCH_KEY, batch_index)
             encoder_input = torch.cat([encoder_input, batch_rep], dim=-1)
-            qz, z = self.z_encoder(encoder_input, *categorical_input)
+            q_m, q_v, z = self.z_encoder(encoder_input, *categorical_input)
         else:
-            qz, z = self.z_encoder(encoder_input, batch_index, *categorical_input)
+            q_m, q_v, z = self.z_encoder(encoder_input, batch_index, *categorical_input)
+            
+        qz= Normal(q_m, q_v.sqrt())
             
         qr = None
         if cont_covs is not None:
-            px_r_encoder_input = torch.cat((z, cont_covs), dim=-1)
-        else:
-            px_r_encoder_input = z
-
-       
-        if self.gbc_latent_dim is None:
-           qr ,px_r = self.px_r_encoder(px_r_encoder_input, batch_index, *categorical_input) 
+            px_r_encoder_input = torch.cat((q_m, cont_covs), dim=-1)
 
         else:
-            px_r = gbc_embedding
+            px_r_encoder_input = q_m
 
 
+        qr ,px_r = self.px_r_encoder(px_r_encoder_input) 
+        
+ 
         ql = None
     
         if not self.use_observed_lib_size:
@@ -532,10 +519,23 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             pr = torch.distributions.MixtureSameFamily(cats, normal_dists)
 
         else:
+            # Ensure guide_means and guide_vars are on the same device as z
+            z_guide_m = self.z_guide_m.to(z.device)
+            z_guide_v = self.z_guide_v.to(z.device)
+            # Select the appropriate batch indices
+            z_guide_m_batch = z_guide_m[batch_index]
+            z_guide_v_batch = z_guide_v[batch_index]
+
             pr = Normal(
-            torch.zeros(self.b_dim, device=z.device),  # Mean 0
-            torch.ones(self.b_dim, device=z.device)    # Standard deviation 1
-        )
+            z_guide_m_batch,  # Mean from guide_means
+            torch.sqrt(z_guide_v_batch)  # Standard deviation from guide_vars
+            )
+            
+            
+            #pr = Normal(
+            #torch.zeros(self.b_dim, device=z.device),  # Mean 0
+            #torch.ones(self.b_dim, device=z.device)    # Standard deviation 1
+        #)
 
         return {
             "px_b": px_b,
@@ -578,9 +578,10 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
                 ) - generative_outputs["pr"].log_prob(inference_outputs[MODULE_KEYS.PX_R_KEY])
                 kl_b = kl_b.sum(-1)
             else:
-                kl_b = kl_divergence(inference_outputs[MODULE_KEYS.PX_R_KEY], generative_outputs["pr"]).sum(-1)
+                kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QR_KEY], generative_outputs["pr"]).sum(-1)
         else:
-            kl_b = torch.tensor(0.0, device=x.device)
+            # Add print statements before the KL divergence computation
+            kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QR_KEY], generative_outputs["pr"]).sum(-1)
     
     
         self.kl_r_log.append(kl_b.mean().item())

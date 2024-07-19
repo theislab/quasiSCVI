@@ -7,6 +7,7 @@ from typing import Literal
 import numpy as np
 from anndata import AnnData
 import torch
+import pandas as pd
 
 from scvi import REGISTRY_KEYS, settings
 from scvi._types import MinifiedDataType
@@ -65,6 +66,9 @@ class QuasiSCVI( EmbeddingMixin,
         gbc_latent_dim: int| None = None,
         b_prior_mixture: bool | None = None,
         b_prior_mixture_k: int | None = None,
+        
+        guide_means: torch.Tensor | None = None,
+        guide_vars: torch.Tensor | None = None,  
         **kwargs,
     ):
         super().__init__(adata)
@@ -122,9 +126,11 @@ class QuasiSCVI( EmbeddingMixin,
                 use_size_factor_key=use_size_factor_key,
                 library_log_means=library_log_means,
                 library_log_vars=library_log_vars,
-                gbc_latent_dim=gbc_latent_dim,
                 b_prior_mixture=b_prior_mixture,
                 b_prior_mixture_k=b_prior_mixture_k,
+                gbc_latent_dim=gbc_latent_dim,
+                z_guide_m=guide_means,
+                z_guide_v=guide_vars,
                 **kwargs,
             )
             self.module.minified_data_type = self.minified_data_type
@@ -142,7 +148,6 @@ class QuasiSCVI( EmbeddingMixin,
         size_factor_key: str | None = None,
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
-        gbc_embedding_key: str | None = None,
         **kwargs,
     ):
         """%(summary)s.
@@ -158,24 +163,14 @@ class QuasiSCVI( EmbeddingMixin,
         %(param_cont_cov_keys)s
         """
         setup_method_args = cls._get_setup_method_args(**locals())
-        if gbc_embedding_key is None:
-            anndata_fields = [
+        anndata_fields = [
             LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
             CategoricalObsField(REGISTRY_KEYS.LABELS_KEY, labels_key),
             NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
             NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),]
-        else:
-            anndata_fields = [
-                LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
-                CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
-                CategoricalObsField(REGISTRY_KEYS.LABELS_KEY, labels_key),
-                NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
-                CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
-                NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
-                ObsmField(EXTRA_KEYS.LATENT_QR_KEY, _LATENT_QR_KEY),
-            ]
+
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)
         if adata_minify_type is not None:
