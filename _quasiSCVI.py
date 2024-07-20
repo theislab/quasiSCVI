@@ -26,7 +26,7 @@ from scvi.data.fields import (
     StringUnsField,
 )
 from scvi.model._utils import _init_library_size
-from scvi.model.base import EmbeddingMixin, UnsupervisedTrainingMixin
+from scvi.model.base import UnsupervisedTrainingMixin # EmbeddingMixin,
 from scvi.model.utils import get_minified_adata_scrna
 from _quasivae import QuasiVAE
 from scvi.utils import setup_anndata_dsp
@@ -38,11 +38,10 @@ from scvi.model.base import ArchesMixin, BaseMinifiedModeModelClass, RNASeqMixin
 _SCVI_LATENT_QZM = "_scvi_latent_qzm"
 _SCVI_LATENT_QZV = "_scvi_latent_qzv"
 _SCVI_OBSERVED_LIB_SIZE = "_scvi_observed_lib_size"
-_LATENT_QR_KEY = "gbc_embedding_key"
 
 logger = logging.getLogger(__name__)
 
-class QuasiSCVI( EmbeddingMixin,
+class QuasiSCVI( #EmbeddingMixin,
     RNASeqMixin,
     VAEMixin,
     ArchesMixin,
@@ -63,12 +62,6 @@ class QuasiSCVI( EmbeddingMixin,
         dispersion: Literal["gene", "gene-batch", "gene-label", "gene-cell"] = "gene",
         gene_likelihood: Literal["zinb", "nb", "poisson", "normal"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
-        gbc_latent_dim: int| None = None,
-        b_prior_mixture: bool | None = None,
-        b_prior_mixture_k: int | None = None,
-        
-        guide_means: torch.Tensor | None = None,
-        guide_vars: torch.Tensor | None = None,  
         **kwargs,
     ):
         super().__init__(adata)
@@ -126,14 +119,11 @@ class QuasiSCVI( EmbeddingMixin,
                 use_size_factor_key=use_size_factor_key,
                 library_log_means=library_log_means,
                 library_log_vars=library_log_vars,
-                b_prior_mixture=b_prior_mixture,
-                b_prior_mixture_k=b_prior_mixture_k,
-                gbc_latent_dim=gbc_latent_dim,
-                z_guide_m=guide_means,
-                z_guide_v=guide_vars,
+                gbc_latent_dim=self.gbc_latent_dim,
                 **kwargs,
             )
             self.module.minified_data_type = self.minified_data_type
+            
 
         self.init_params_ = self._get_init_params(locals())
 
@@ -148,6 +138,8 @@ class QuasiSCVI( EmbeddingMixin,
         size_factor_key: str | None = None,
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
+        gbc_qzm_key: str| None = None,
+        gbc_qzv_key: str| None = None,
         **kwargs,
     ):
         """%(summary)s.
@@ -169,7 +161,18 @@ class QuasiSCVI( EmbeddingMixin,
             CategoricalObsField(REGISTRY_KEYS.LABELS_KEY, labels_key),
             NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
-            NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),]
+            NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
+            ObsmField(
+                    EXTRA_KEYS.GBC_QZM_KEY,
+                    gbc_qzm_key,
+                ),
+            ObsmField(
+                    EXTRA_KEYS.GBC_QZV_KEY,
+                    gbc_qzv_key,
+                )
+        
+        
+        ]
 
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)
@@ -178,6 +181,13 @@ class QuasiSCVI( EmbeddingMixin,
         adata_manager = AnnDataManager(fields=anndata_fields, setup_method_args=setup_method_args)
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
+
+        # adds-on to pass dimension of gbc latents
+        gbc_latent_dim = adata.obsm[gbc_qzm_key].shape[1] if gbc_qzm_key is not None else None
+        cls.gbc_latent_dim = gbc_latent_dim 
+
+
+    
     @staticmethod
     def _get_fields_for_adata_minification(
         minified_data_type: MinifiedDataType,

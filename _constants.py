@@ -9,15 +9,12 @@ class _MODULE_KEYS(NamedTuple):
     QZM_KEY: str = "qzm"
     QZV_KEY: str = "qzv"
     LIBRARY_KEY: str = "library"
-    PX_R_KEY: str = "px_r"
-    QR_KEY: str = "qr"
     QL_KEY: str = "ql"
     BATCH_INDEX_KEY: str = "batch_index"
     Y_KEY: str = "y"
     CONT_COVS_KEY: str = "cont_covs"
     CAT_COVS_KEY: str = "cat_covs"
     SIZE_FACTOR_KEY: str = "size_factor"
-    GBC_EMBED_KEY: str = "gbc_embedding"
     # generative
     PX_KEY: str = "px"
     PL_KEY: str = "pl"
@@ -25,12 +22,18 @@ class _MODULE_KEYS(NamedTuple):
     # loss
     KL_L_KEY: str = "kl_divergence_l"
     KL_Z_KEY: str = "kl_divergence_z"
+    # add-ons
+    QPXR_KEY: str = "qpxr"
+    Z_PXR_KEY: str = "z_pxr"
+    GBC_QZM_KEY: str = "gbc_qzm"
+    GBC_QZV_KEY: str = "gbc_qzv"
 
 
 MODULE_KEYS = _MODULE_KEYS()
 
 class EXTRA_KEYS(NamedTuple):
-    LATENT_QR_KEY: 'str' =  'gbc_embedding_key'
+    GBC_QZM_KEY: str =  'gbc_qzm_key'
+    GBC_QZV_KEY: str =  'gbc_qzv_key'
 
 
 EXTRA_KEYS = EXTRA_KEYS()
