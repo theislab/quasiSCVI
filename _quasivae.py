@@ -84,7 +84,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         self.use_size_factor_key = use_size_factor_key
         self.use_observed_lib_size = use_size_factor_key or use_observed_lib_size
         self.gbc_latent_dim = gbc_latent_dim
-        self.kl_r_log = []  # List to store kl_b values
+        self.kl_r_log = []  # List to store kl_r values
 
         if not self.use_observed_lib_size:
             if library_log_means is None or library_log_vars is None:
@@ -122,20 +122,36 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         _extra_encoder_kwargs = extra_encoder_kwargs or {}
 
         # TO DO: this has to go from qzm
-        self.px_r_encoder = Encoder(
-            n_latent,
-            gbc_latent_dim,
-            n_layers=1,
-            n_cat_list=encoder_cat_list,
-            n_hidden=n_hidden,
-            dropout_rate=dropout_rate,
-            inject_covariates=deeply_inject_covariates,
-            use_batch_norm=use_batch_norm_encoder,
-            use_layer_norm=use_layer_norm_encoder,
-            var_activation=var_activation,
-            return_dist=True,
-            **_extra_encoder_kwargs,
-        )
+        if self.gbc_latent_dim is None:
+                self.px_r_encoder = Encoder(
+                n_latent,
+                b_dim,
+                n_layers=1,
+                n_cat_list=encoder_cat_list,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+                inject_covariates=deeply_inject_covariates,
+                use_batch_norm=use_batch_norm_encoder,
+                use_layer_norm=use_layer_norm_encoder,
+                var_activation=var_activation,
+                return_dist=True,
+                **_extra_encoder_kwargs,
+            )
+        else:
+            self.px_r_encoder = Encoder(
+                n_latent,
+                gbc_latent_dim,
+                n_layers=1,
+                n_cat_list=encoder_cat_list,
+                n_hidden=n_hidden,
+                dropout_rate=dropout_rate,
+                inject_covariates=deeply_inject_covariates,
+                use_batch_norm=use_batch_norm_encoder,
+                use_layer_norm=use_layer_norm_encoder,
+                var_activation=var_activation,
+                return_dist=True,
+                **_extra_encoder_kwargs,
+            )
         self.z_encoder = Encoder(
             n_input_encoder,
             n_latent,
@@ -198,10 +214,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         self.px_r_decoder = torch.nn.Sequential(
         qrx,  # Linear transformation
         torch.nn.Softmax(dim=-1)   )           # Softmax activation
-        
-        
-        
-
+       
         self.b_prior_mixture = b_prior_mixture
         self.b_prior_mixture_k = b_prior_mixture_k
         if self.b_prior_mixture:
@@ -247,9 +260,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
         size_factor = tensors.get(REGISTRY_KEYS.SIZE_FACTOR_KEY, None)
         if size_factor is not None:
             size_factor = torch.log(size_factor)
-
-       
-        
         
         return {
             MODULE_KEYS.Z_KEY: inference_outputs[MODULE_KEYS.Z_KEY],
@@ -336,7 +346,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
 
 
         qr ,px_r = self.px_r_encoder(px_r_encoder_input) 
-        
  
         ql = None
     
@@ -508,15 +517,22 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             pl = Normal(local_library_log_means, local_library_log_vars.sqrt())
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
 
-        if self.b_prior_mixture:
-            offset = (
-                10.0 * F.one_hot(y, num_classes=self.n_labels).float()
-                if self.n_labels >= 2
-                else 0.0
-            )
-            cats =torch.distributions.Categorical(logits=self.b_prior_logits + offset)
-            normal_dists = torch.distributions.Normal(self.b_prior_means, torch.exp(self.b_prior_scales))
-            pr = torch.distributions.MixtureSameFamily(cats, normal_dists)
+
+        if self.gbc_latent_dim is None:
+            if self.b_prior_mixture:
+                offset = (
+                    10.0 * F.one_hot(y, num_classes=self.n_labels).float()
+                    if self.n_labels >= 2
+                    else 0.0
+                )
+                cats =torch.distributions.Categorical(logits=self.b_prior_logits + offset)
+                normal_dists = torch.distributions.Normal(self.b_prior_means, torch.exp(self.b_prior_scales))
+                pr = torch.distributions.MixtureSameFamily(cats, normal_dists)
+            else:
+                pr = Normal(
+                    torch.zeros(self.b_dim, device=z.device),  # Mean 0
+                    torch.ones(self.b_dim, device=z.device),    # Standard deviation 1
+                )
 
         else:
             # Ensure guide_means and guide_vars are on the same device as z
@@ -531,11 +547,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             torch.sqrt(z_guide_v_batch)  # Standard deviation from guide_vars
             )
             
-            
-            #pr = Normal(
-            #torch.zeros(self.b_dim, device=z.device),  # Mean 0
-            #torch.ones(self.b_dim, device=z.device)    # Standard deviation 1
-        #)
 
         return {
             "px_b": px_b,
@@ -580,7 +591,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass, EmbeddingModuleMixin):
             else:
                 kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QR_KEY], generative_outputs["pr"]).sum(-1)
         else:
-            # Add print statements before the KL divergence computation
             kl_b = kl_divergence(inference_outputs[MODULE_KEYS.QR_KEY], generative_outputs["pr"]).sum(-1)
     
     
