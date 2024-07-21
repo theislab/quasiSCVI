@@ -336,3 +336,71 @@ class QuasiSCVI( #EmbeddingMixin,
             if return_dist
             else torch.cat(latent_b).numpy()
         )
+        
+    @torch.inference_mode()
+    def get_dispersion_latent_representation(
+        self,
+        adata: Optional[AnnData] = None,
+        indices: Optional[Sequence[int]] = None,
+        give_mean: bool = True,
+        mc_samples: int = 5000,
+        batch_size: Optional[int] = None,
+        return_dist: bool = False,
+    ) -> Union[np.ndarray, tuple[np.ndarray, np.ndarray]]:
+        """Return the latent representation for dispersion for each cell.
+
+        This is typically denoted as :math:`b_n`.
+
+        Parameters
+        ----------
+        adata
+            AnnData object with equivalent structure to initial AnnData. If `None`, defaults to the
+            AnnData object used to initialize the model.
+        indices
+            Indices of cells in adata to use. If `None`, all cells are used.
+        give_mean
+            Give mean of distribution or sample from it.
+        mc_samples
+            For distributions with no closed-form mean (e.g., `logistic normal`), how many Monte
+            Carlo samples to take for computing mean.
+        batch_size
+            Minibatch size for data loading into model. Defaults to `scvi.settings.batch_size`.
+        return_dist
+            Return (mean, variance) of distributions instead of just the mean.
+            If `True`, ignores `give_mean` and `mc_samples`. In the case of the latter,
+            `mc_samples` is used to compute the mean of a transformed distribution.
+            If `return_dist` is true the untransformed mean and variance are returned.
+
+        Returns
+        -------
+        Low-dimensional representation for each cell or a tuple containing its mean and variance.
+        """
+        self._check_if_trained(warn=False)
+
+        adata = self._validate_anndata(adata)
+        scdl = self._make_data_loader(adata=adata, indices=indices, batch_size=batch_size)
+        latent_px_r = []
+        latent_qrm = []
+        latent_qrv = []
+        
+        for tensors in scdl:
+            inference_inputs = self.module._get_inference_input(tensors)
+            outputs = self.module.inference(**inference_inputs)
+
+            if "qpxr" in outputs:
+                qr = outputs["qpxr"]
+            
+            if give_mean:
+                px_r = qr.loc
+            else:
+                px_r = outputs["z_pxr"]
+
+            latent_px_r += [px_r.cpu()]
+            latent_qrm += [qr.loc.cpu()]
+            latent_qrv += [qr.scale.square().cpu()]
+
+        return (
+            (torch.cat(latent_qrm).numpy(), torch.cat(latent_qrv).numpy())
+            if return_dist
+            else torch.cat(latent_px_r).numpy()
+        )
