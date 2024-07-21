@@ -23,8 +23,8 @@ class _MODULE_KEYS(NamedTuple):
     KL_L_KEY: str = "kl_divergence_l"
     KL_Z_KEY: str = "kl_divergence_z"
     # add-ons
-    QPXR_KEY: str = "qpxr"
-    Z_PXR_KEY: str = "z_pxr"
+    QB_KEY: str = "qb"
+    Z_B_KEY: str = "z_b"
     GBC_QZM_KEY: str = "gbc_qzm"
     GBC_QZV_KEY: str = "gbc_qzv"
 
