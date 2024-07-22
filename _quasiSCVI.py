@@ -62,9 +62,13 @@ class QuasiSCVI( #EmbeddingMixin,
         dispersion: Literal["gene", "gene-batch", "gene-label", "gene-cell"] = "gene",
         gene_likelihood: Literal["zinb", "nb", "poisson", "normal"] = "zinb",
         latent_distribution: Literal["normal", "ln"] = "normal",
+        b_prior_mixture: bool | None = None,
+        b_prior_mixture_k: int | None = None,
         **kwargs,
     ):
         super().__init__(adata)
+        b_prior_mixture=b_prior_mixture,
+        b_prior_mixture_k=b_prior_mixture_k,
         self._module_kwargs = {
             "n_hidden": n_hidden,
             "n_latent": n_latent,
@@ -138,8 +142,6 @@ class QuasiSCVI( #EmbeddingMixin,
         size_factor_key: str | None = None,
         categorical_covariate_keys: list[str] | None = None,
         continuous_covariate_keys: list[str] | None = None,
-        gbc_qzm_key: str| None = None,
-        gbc_qzv_key: str| None = None,
         **kwargs,
     ):
         """%(summary)s.
@@ -155,6 +157,7 @@ class QuasiSCVI( #EmbeddingMixin,
         %(param_cont_cov_keys)s
         """
         setup_method_args = cls._get_setup_method_args(**locals())
+
         anndata_fields = [
             LayerField(REGISTRY_KEYS.X_KEY, layer, is_count_data=True),
             CategoricalObsField(REGISTRY_KEYS.BATCH_KEY, batch_key),
@@ -162,17 +165,10 @@ class QuasiSCVI( #EmbeddingMixin,
             NumericalObsField(REGISTRY_KEYS.SIZE_FACTOR_KEY, size_factor_key, required=False),
             CategoricalJointObsField(REGISTRY_KEYS.CAT_COVS_KEY, categorical_covariate_keys),
             NumericalJointObsField(REGISTRY_KEYS.CONT_COVS_KEY, continuous_covariate_keys),
-            ObsmField(
-                    EXTRA_KEYS.GBC_QZM_KEY,
-                    gbc_qzm_key,
-                ),
-            ObsmField(
-                    EXTRA_KEYS.GBC_QZV_KEY,
-                    gbc_qzv_key,
-                )
-        
-        
         ]
+        
+        
+        
 
         # register new fields if the adata is minified
         adata_minify_type = _get_adata_minify_type(adata)
@@ -182,9 +178,6 @@ class QuasiSCVI( #EmbeddingMixin,
         adata_manager.register_fields(adata, **kwargs)
         cls.register_manager(adata_manager)
 
-        # adds-on to pass dimension of gbc latents
-        gbc_latent_dim = adata.obsm[gbc_qzm_key].shape[1] if gbc_qzm_key is not None else None
-        cls.gbc_latent_dim = gbc_latent_dim 
 
 
     

@@ -27,7 +27,6 @@ from scvi.module.base import (
 
 def quasi_likelihood_loss(px_rate, target, px_r, b):
     residual = torch.pow(target - px_rate, 2)
-    b = torch.clamp(b, min=0, max=3)
     variance = px_r * torch.pow(px_rate, b)
     quasi_likelihood = residual / variance 
     return quasi_likelihood
@@ -43,6 +42,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
         n_hidden: int = 128,
         n_latent: int = 15,
         n_layers: int = 1,
+        b_dim: int = 10,
         n_continuous_cov: int = 0,
         n_cats_per_cov: list[int] | None = None,
         dropout_rate: float = 0.1,
@@ -63,12 +63,15 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
         extra_encoder_kwargs: dict | None = None,
         extra_decoder_kwargs: dict | None = None,
         batch_embedding_kwargs: dict | None = None,
-        gbc_latent_dim: int = 0,
+        b_prior_mixture: bool = False,
+        b_prior_mixture_k: int = 5,
+
     ):
 
         super().__init__()
         self.dispersion = dispersion
         self.n_latent = n_latent
+        self.b_dim = b_dim
         self.log_variational = log_variational
         self.gene_likelihood = gene_likelihood
         self.n_batch = n_batch
@@ -129,7 +132,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
         # TO DO: this has to go from qzm
         self.b_encoder = Encoder(
             n_latent,
-            gbc_latent_dim, # self.gbc_latent_dim
+            b_dim, 
             n_layers=1,
             # n_cat_list=encoder_cat_list,
             n_hidden=n_hidden,
@@ -141,6 +144,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
             return_dist=True,
             **_extra_encoder_kwargs,
         )
+    
         self.z_encoder = Encoder(
             n_input_encoder,
             n_latent,
@@ -191,19 +195,27 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
 
   
         
-       
-        
         self.b_decoder = torch.nn.Sequential(    
-            FCLayers(n_in=gbc_latent_dim,
+            FCLayers(n_in=b_dim,
                      n_out=n_hidden,
                      n_layers=1,
                      n_hidden=n_hidden,
                      dropout_rate=0
                     ),
         torch.nn.Linear(n_hidden, 1),  # Linear transformation
-        # torch.nn.Softmax(dim=-1),   
+        torch.nn.Softmax(dim=-1),   
         )           # Softmax activation
-        
+        self.b_prior_mixture = b_prior_mixture
+        self.b_prior_mixture_k = b_prior_mixture_k
+        if self.b_prior_mixture:
+            if self.n_labels > 1:
+                b_prior_mixture_k = self.n_labels
+            else:
+                b_prior_mixture_k = self.b_prior_mixture_k
+        # Initialize parameters for the mixture model
+            self.b_prior_logits = torch.nn.Parameter(torch.zeros(b_prior_mixture_k))
+            self.b_prior_means = torch.nn.Parameter(torch.randn(b_dim, b_prior_mixture_k))
+            self.b_prior_scales = torch.nn.Parameter(torch.zeros(b_dim, b_prior_mixture_k))
         
         
 
@@ -242,23 +254,17 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
             size_factor = torch.log(size_factor)
 
        
-        
-        
         return {
-            MODULE_KEYS.Z_KEY: inference_outputs[MODULE_KEYS.Z_KEY],
-            MODULE_KEYS.LIBRARY_KEY: inference_outputs[MODULE_KEYS.LIBRARY_KEY],
-            MODULE_KEYS.BATCH_INDEX_KEY: tensors[REGISTRY_KEYS.BATCH_KEY],
-            MODULE_KEYS.Y_KEY: tensors[REGISTRY_KEYS.LABELS_KEY],
-            MODULE_KEYS.CONT_COVS_KEY: tensors.get(REGISTRY_KEYS.CONT_COVS_KEY, None),
-            MODULE_KEYS.CAT_COVS_KEY: tensors.get(REGISTRY_KEYS.CAT_COVS_KEY, None),
-            MODULE_KEYS.SIZE_FACTOR_KEY: size_factor,
-            MODULE_KEYS.Z_B_KEY:  inference_outputs[MODULE_KEYS.Z_B_KEY],
-            MODULE_KEYS.GBC_QZM_KEY: tensors[EXTRA_KEYS.GBC_QZM_KEY],
-            MODULE_KEYS.GBC_QZV_KEY: tensors[EXTRA_KEYS.GBC_QZV_KEY],
+                MODULE_KEYS.Z_KEY: inference_outputs[MODULE_KEYS.Z_KEY],
+                MODULE_KEYS.LIBRARY_KEY: inference_outputs[MODULE_KEYS.LIBRARY_KEY],
+                MODULE_KEYS.BATCH_INDEX_KEY: tensors[REGISTRY_KEYS.BATCH_KEY],
+                MODULE_KEYS.CONT_COVS_KEY: tensors.get(REGISTRY_KEYS.CONT_COVS_KEY, None),
+                MODULE_KEYS.CAT_COVS_KEY: tensors.get(REGISTRY_KEYS.CAT_COVS_KEY, None),
+                MODULE_KEYS.SIZE_FACTOR_KEY: size_factor,
+                MODULE_KEYS.Z_B_KEY:  inference_outputs[MODULE_KEYS.Z_B_KEY],
 
-            
+            }
         
-        }
 
     def _compute_local_library_params(
         self,
@@ -323,8 +329,8 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
             
 
 
-        
-        qb, z_b = self.b_encoder(q_m) 
+        qb, z_b = self.b_encoder(z)
+
         
  
         ql = None
@@ -405,8 +411,6 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
         z: torch.Tensor,
         z_b: torch.Tensor, 
         # tensors for the prior of b
-        gbc_qzm: torch.Tensor,
-        gbc_qzv: torch.Tensor,
         library: torch.Tensor,
         batch_index: torch.Tensor,
         cont_covs: torch.Tensor | None = None,
@@ -499,13 +503,24 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
             ) = self._compute_local_library_params(batch_index)
             pl = Normal(local_library_log_means, local_library_log_vars.sqrt())
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
-
         
-
-        pb = Normal(
-        gbc_qzm,  # Mean from guide_means
-        torch.sqrt(gbc_qzv)  # Standard deviation from guide_vars
-        )
+        
+        
+        if self.b_prior_mixture:
+                offset = (
+                10.0 * F.one_hot(y, num_classes=self.n_labels).float()
+                if self.n_labels >= 2
+                else 0.0
+            )
+                cats =torch.distributions.Categorical(logits=self.b_prior_logits + offset)
+                normal_dists = torch.distributions.Normal(self.b_prior_means, torch.exp(self.b_prior_scales))
+                pb = torch.distributions.MixtureSameFamily(cats, normal_dists)
+        else:
+                pb = Normal(
+                torch.zeros(self.b_dim, device=z.device),  # Mean 0
+                torch.ones(self.b_dim, device=z.device)    # Standard deviation 1
+             )
+        
 
         return {
             "px_b": b,
