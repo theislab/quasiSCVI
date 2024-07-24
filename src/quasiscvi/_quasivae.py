@@ -77,6 +77,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
         self.encode_covariates = encode_covariates
         self.use_size_factor_key = use_size_factor_key
         self.use_observed_lib_size = use_size_factor_key or use_observed_lib_size
+
         self.kl_r_log = []  # List to store kl_b values
 
         if not self.use_observed_lib_size:
@@ -114,6 +115,7 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
 
         encoder_cat_list = cat_list if encode_covariates else None
         _extra_encoder_kwargs = extra_encoder_kwargs or {}
+        self.guide_gene_embedding = torch.nn.Embedding(n_labels, gbc_latent_dim)
 
         # TO DO: this has to go from qzm
         self.px_r_encoder = Encoder(
@@ -496,9 +498,10 @@ class QuasiVAE(BaseMinifiedModeModuleClass): # EmbeddingModuleMixin
         pz = Normal(torch.zeros_like(z), torch.ones_like(z))
 
         
+        guide_gene_representation = self.guide_gene_embedding(y)
 
         pr = Normal(
-        gbc_qzm,  # Mean from guide_means
+        gbc_qzm + guide_gene_representation ,  # Mean from guide_means
         torch.sqrt(gbc_qzv)  # Standard deviation from guide_vars
         )
 
