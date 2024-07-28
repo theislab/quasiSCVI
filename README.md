@@ -6,4 +6,4 @@ Extending the likelihood to quasi-likelihood
 You can install the package via pip:
 
 ```bash
-pip install quasiSCVI
+pip install -e .
